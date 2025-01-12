@@ -29,10 +29,17 @@ server.listen(port, () => {
 
 startWebSocketServer(server);
 
-process.on('uncaughtException', (err, origin) => {
-  logger.error(`Uncaught Exception at ${origin}: ${err}`);
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  console.error(error.stack);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+
+  if (reason instanceof Error) {
+    console.error(reason.stack);
+  } else {
+    console.error(reason);
+  }
 });
