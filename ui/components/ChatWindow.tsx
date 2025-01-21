@@ -256,12 +256,14 @@ const useSocket = (
         });
 
         ws.onerror = () => {
+          debugger
           clearTimeout(timeoutId);
           setIsWSReady(false);
           toast.error('WebSocket connection error.');
         };
 
         ws.onclose = () => {
+          debugger
           clearTimeout(timeoutId);
           setIsWSReady(false);
           console.debug(new Date(), 'ws:disconnected');
@@ -277,15 +279,17 @@ const useSocket = (
       }
     };
 
-    const attemptReconnect = () => {
+    const attemptReconnect = async () => {
       retryCountRef.current += 1;
 
       if (retryCountRef.current > MAX_RETRIES) {
         console.debug(new Date(), 'ws:max_retries');
-        setError(true);
+        //setError(true);
+
         toast.error(
           'Unable to connect to server after multiple attempts. Please refresh the page to try again.',
         );
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         return;
       }
 
