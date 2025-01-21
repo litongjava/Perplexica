@@ -286,11 +286,12 @@ const useSocket = (
         console.debug(new Date(), 'ws:max_retries');
         //setError(true);
 
-        toast.error(
-          'Unable to connect to server after multiple attempts. Please refresh the page to try again.',
-        );
+        // toast.error(
+        //   'Unable to connect to server after multiple attempts. Please refresh the page to try again.',
+        // );
+
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        return;
+        //return;
       }
 
       const backoffDelay = getBackoffDelay(retryCountRef.current);
