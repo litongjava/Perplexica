@@ -1,24 +1,24 @@
 'use client';
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import {Fragment, useEffect, useRef, useState} from 'react';
 import MessageInput from './MessageInput';
-import { File, Message } from './ChatWindow';
+import {File, Message} from './ChatWindow';
 import MessageBox from './MessageBox';
 import MessageBoxLoading from './MessageBoxLoading';
 
 const Chat = ({
-  loading,
-  messages,
-  sendMessage,
-  messageAppeared,
-  rewrite,
-  fileIds,
-  setFileIds,
-  files,
-  setFiles,
-  copilotEnabled,
-  setCopilotEnabled,
-}: {
+                loading,
+                messages,
+                sendMessage,
+                messageAppeared,
+                rewrite,
+                fileIds,
+                setFileIds,
+                files,
+                setFiles,
+                copilotEnabled,
+                setCopilotEnabled,
+              }: {
   messages: Message[];
   sendMessage: (message: string) => void;
   loading: boolean;
@@ -28,12 +28,14 @@ const Chat = ({
   setFileIds: (fileIds: string[]) => void;
   files: File[];
   setFiles: (files: File[]) => void;
-  copilotEnabled:boolean
-  setCopilotEnabled:(mode: boolean) => void;
+  copilotEnabled: boolean;
+  setCopilotEnabled: (mode: boolean) => void;
 }) => {
   const [dividerWidth, setDividerWidth] = useState(0);
   const dividerRef = useRef<HTMLDivElement | null>(null);
   const messageEnd = useRef<HTMLDivElement | null>(null);
+  // 新增：滚动容器的引用
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const updateDividerWidth = () => {
@@ -49,21 +51,30 @@ const Chat = ({
     return () => {
       window.removeEventListener('resize', updateDividerWidth);
     };
-  });
+  }, []);
 
   useEffect(() => {
-    messageEnd.current?.scrollIntoView({ behavior: 'smooth' });
-
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const threshold = 50;
+    const isAtBottom =
+      container.scrollHeight - container.scrollTop <= container.clientHeight + threshold;
+    if (isAtBottom) {
+      messageEnd.current?.scrollIntoView({behavior: 'smooth'});
+    }
     if (messages.length === 1) {
       document.title = `${messages[0].content.substring(0, 30)} - Max Search`;
     }
   }, [messages]);
 
   return (
-    <div className="flex flex-col space-y-6 pt-8 pb-44 lg:pb-32 sm:mx-4 md:mx-8">
+    <div
+      ref={scrollContainerRef}
+      className="scroll-container flex flex-col space-y-6 pt-8 pb-44 lg:pb-32 sm:mx-4 md:mx-8"
+      style={{overflowY: 'auto', maxHeight: 'calc(100vh - 100px)'}}
+    >
       {messages.map((msg, i) => {
         const isLast = i === messages.length - 1;
-
         return (
           <Fragment key={msg.messageId}>
             <MessageBox
@@ -78,17 +89,17 @@ const Chat = ({
               sendMessage={sendMessage}
             />
             {!isLast && msg.role === 'assistant' && (
-              <div className="h-px w-full bg-light-secondary dark:bg-dark-secondary" />
+              <div className="h-px w-full bg-light-secondary dark:bg-dark-secondary"/>
             )}
           </Fragment>
         );
       })}
-      {loading && !messageAppeared && <MessageBoxLoading />}
-      <div ref={messageEnd} className="h-0" />
+      {loading && !messageAppeared && <MessageBoxLoading/>}
+      <div ref={messageEnd} className="h-0"/>
       {dividerWidth > 0 && (
         <div
           className="bottom-24 lg:bottom-10 fixed z-40"
-          style={{ width: dividerWidth }}
+          style={{width: dividerWidth}}
         >
           <MessageInput
             loading={loading}
