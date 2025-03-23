@@ -1,24 +1,23 @@
 'use client';
 
-import {useEffect, useRef, useState} from 'react';
-import {Document} from '@langchain/core/documents';
+import { useEffect, useRef, useState } from 'react';
+import { Document } from '@langchain/core/documents';
 import Navbar from './Navbar';
 import Chat from './Chat';
 import EmptyChat from './EmptyChat';
-import {toast} from 'sonner';
-import {useSearchParams} from 'next/navigation';
-import {getSuggestions} from '@/lib/actions';
-import {Settings} from 'lucide-react';
+import { toast } from 'sonner';
+import { useSearchParams } from 'next/navigation';
+import { getSuggestions } from '@/lib/actions';
+import { Settings } from 'lucide-react';
 import SettingsDialog from './SettingsDialog';
 import NextError from 'next/error';
-import {Mcid} from "@/lib/mcid";
-import useSocket from "@/lib/useSocket";
-
+import { Mcid } from '@/lib/mcid';
+import {sendSSERequest, SSEEvent} from "@/utils/sseClient";
 export type Message = {
   messageId: string;
   chatId: string;
   createdAt: Date;
-  reasoning?:string;
+  reasoning?: string;
   content: string;
   role: 'user' | 'assistant';
   suggestions?: string[];
@@ -29,7 +28,7 @@ export interface File {
   fileName: string;
   fileExtension: string;
   fileId: string;
-}
+};
 
 const loadMessages = async (
   chatId: string,
@@ -41,15 +40,12 @@ const loadMessages = async (
   setFiles: (files: File[]) => void,
   setFileIds: (fileIds: string[]) => void,
 ) => {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/chats/${chatId}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chats/${chatId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
     },
-  );
+  });
 
   if (res.status === 404) {
     setNotFound(true);
@@ -58,32 +54,21 @@ const loadMessages = async (
   }
 
   const data = await res.json();
-
-  const messages = data.messages.map((msg: any) => {
-    return {
-      ...msg,
-      // ...JSON.parse(msg.metadata),
-    };
-  }) as Message[];
-
+  const messages = data.messages.map((msg: any) => ({ ...msg })) as Message[];
   setMessages(messages);
 
-  const history = messages.map((msg) => {
-    return [msg.role, msg.content];
-  }) as [string, string][];
-
+  const history = messages.map((msg) => [msg.role, msg.content]) as [string, string][];
   console.debug(new Date(), 'app:messages_loaded');
 
-  document.title = messages[0].content;
+  if (messages.length > 0) {
+    document.title = messages[0].content;
+  }
 
-  const files = data.chat.files && data.chat.files.map((file: any) => {
-    return {
-      fileName: file.name,
-      fileExtension: file.name.split('.').pop(),
-      fileId: file.fileId,
-    };
-  });
-
+  const files = data.chat.files && data.chat.files.map((file: any) => ({
+    fileName: file.name,
+    fileExtension: file.name.split('.').pop(),
+    fileId: file.fileId,
+  }));
   setFiles(files);
   setFileIds(files && files.map((file: File) => file.fileId));
 
@@ -92,7 +77,7 @@ const loadMessages = async (
   setIsMessagesLoaded(true);
 };
 
-const ChatWindow = ({id}: { id?: string }) => {
+const ChatWindow = ({ id }: { id?: string }) => {
   const searchParams = useSearchParams();
   const initialMessage = searchParams.get('q');
   const [userId, setUserId] = useState<string | undefined>();
@@ -100,14 +85,8 @@ const ChatWindow = ({id}: { id?: string }) => {
   const [newChatCreated, setNewChatCreated] = useState(false);
 
   const [hasError, setHasError] = useState(false);
+  // 对于 SSE，我们以消息加载完成和用户初始化作为就绪标志
   const [isReady, setIsReady] = useState(false);
-
-  const [isWSReady, setIsWSReady] = useState(false);
-  const ws = useSocket(
-    process.env.NEXT_PUBLIC_WS_URL!,
-    setIsWSReady,
-    setHasError,
-  );
 
   const [loading, setLoading] = useState(false);
   const [messageAppeared, setMessageAppeared] = useState(false);
@@ -123,45 +102,36 @@ const ChatWindow = ({id}: { id?: string }) => {
   const [copilotEnabled, setCopilotEnabled] = useState(true);
 
   const [isMessagesLoaded, setIsMessagesLoaded] = useState(false);
-
   const [notFound, setNotFound] = useState(false);
-
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // 保存用户 ID
   useEffect(() => {
     const initializeUserId = () => {
       try {
-        // 从 localStorage 读取现有用户 ID
         const storedUserId = localStorage.getItem('userId');
-
         if (storedUserId) {
           setUserId(storedUserId);
           console.debug('Using existing user ID:', storedUserId);
         } else {
           const newUserId = new Mcid().generate().toString();
-
           localStorage.setItem('userId', newUserId);
           setUserId(newUserId);
           console.debug('Generated new user ID:', newUserId);
         }
       } catch (error) {
         console.error('Error initializing user ID:', error);
-        const fallbackId = "1234567890";
+        const fallbackId = '1234567890';
         localStorage.setItem('userId', fallbackId);
         setUserId(fallbackId);
       }
     };
-
     initializeUserId();
   }, []);
 
+  // 加载历史消息
   useEffect(() => {
-    if (
-      chatId &&
-      !newChatCreated &&
-      !isMessagesLoaded &&
-      messages.length === 0
-    ) {
+    if (chatId && !newChatCreated && !isMessagesLoaded && messages.length === 0) {
       loadMessages(
         chatId,
         setMessages,
@@ -177,25 +147,14 @@ const ChatWindow = ({id}: { id?: string }) => {
       setIsMessagesLoaded(true);
       setChatId(new Mcid().generate().toString());
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (ws?.readyState === 1) {
-        ws.close();
-        console.debug(new Date(), 'ws:cleanup');
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [chatId, newChatCreated, isMessagesLoaded, messages]);
 
   useEffect(() => {
     const savedFocusMode = localStorage.getItem('focusMode');
     if (savedFocusMode) {
       setFocusMode(savedFocusMode);
     }
-  }, [setFocusMode]);
+  }, []);
 
   const handleFocusModeChange = (mode: string) => {
     localStorage.setItem('focusMode', mode);
@@ -207,7 +166,7 @@ const ChatWindow = ({id}: { id?: string }) => {
     if (mode) {
       setOptimizationMode(mode);
     }
-  }, [setOptimizationMode]);
+  }, []);
 
   const handleOptimizationModeChange = (mode: string) => {
     localStorage.setItem('optimizationMode', mode);
@@ -215,53 +174,31 @@ const ChatWindow = ({id}: { id?: string }) => {
   };
 
   const messagesRef = useRef<Message[]>([]);
-
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
   useEffect(() => {
-    if (isMessagesLoaded && isWSReady) {
+    if (isMessagesLoaded && userId) {
       setIsReady(true);
       console.debug(new Date(), 'app:ready');
     } else {
       setIsReady(false);
     }
-  }, [isMessagesLoaded, isWSReady, userId]);
+  }, [isMessagesLoaded, userId]);
 
+  // 使用 SSE 发送消息，替换之前的 ws.send 及事件监听逻辑
   const sendMessage = async (message: string, messageId?: string) => {
     if (loading) return;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      toast.error('Cannot send message while disconnected');
-      return;
-    }
-
     setLoading(true);
     setMessageAppeared(false);
 
     let sources: Document[] | undefined = undefined;
-    let recievedMessage = '';
+    let receivedMessage = '';
     let added = false;
-
     messageId = messageId ?? new Mcid().generate().toString();
 
-    ws.send(
-      JSON.stringify({
-        type: 'message',
-        userId: userId,
-        message: {
-          messageId: messageId,
-          chatId: chatId!,
-          content: message,
-        },
-        files: fileIds,
-        focusMode: focusMode,
-        copilotEnabled: copilotEnabled,
-        optimizationMode: optimizationMode,
-        history: [],
-      }),
-    );
-
+    // 先添加用户消息
     setMessages((prevMessages) => [
       ...prevMessages,
       {
@@ -273,161 +210,163 @@ const ChatWindow = ({id}: { id?: string }) => {
       },
     ]);
 
-    const messageHandler = async (e: MessageEvent) => {
-      const data = JSON.parse(e.data);
+    try {
+      await sendSSERequest({
+        accessToken: null, // 如有需要，可加入 token
+        payload: {
+          type: 'message',
+          userId: userId!,
+          message: {
+            messageId: messageId,
+            chatId: chatId!,
+            content: message,
+          },
+          files: fileIds,
+          focusMode: focusMode,
+          copilotEnabled: copilotEnabled,
+          optimizationMode: optimizationMode,
+          history: [],
+        },
+        onEvent: (event: SSEEvent) => {
+          if (event.type === 'done' || !event.data) return;
 
-      if (data.type === 'error') {
-        toast.error(data.data);
-        setLoading(false);
-        return;
-      }
-
-      if (data.type === 'sources') {
-        sources = data.data;
-        if (!added) {
-          setMessages((prevMessages) => [
-            ...prevMessages,
-            {
-              content: '',
-              messageId: data.messageId,
-              chatId: chatId!,
-              role: 'assistant',
-              sources: sources,
-              createdAt: new Date(),
-            },
-          ]);
-          added = true;
-        }
-        setMessageAppeared(true);
-      }
-
-      if (data.type === 'reasoning') {
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) => {
-            if (msg.messageId === data.messageId) {
-              return { ...msg, reasoning: (msg.reasoning || '') + data.data };
+          const data = JSON.parse(event.data);
+          if (data.type === 'error') {
+            toast.error(data.data);
+            setLoading(false);
+            return;
+          }
+          if (data.type === 'sources') {
+            sources = data.data;
+            if (!added) {
+              setMessages((prevMessages) => [
+                ...prevMessages,
+                {
+                  content: '',
+                  messageId: data.messageId,
+                  chatId: chatId!,
+                  role: 'assistant',
+                  sources: sources,
+                  createdAt: new Date(),
+                },
+              ]);
+              added = true;
             }
-            return msg;
-          }),
-        );
-        return;
-      }
-
-      if (data.type === 'message') {
-        if (!added) {
-          setMessages((prevMessages) => [
-            ...prevMessages,
-            {
-              content: data.data,
-              messageId: data.messageId,
-              chatId: chatId!,
-              role: 'assistant',
-              sources: sources,
-              createdAt: new Date(),
-            },
-          ]);
-          added = true;
-        }
-
-        setMessages((prev) =>
-          prev.map((message) => {
-            if (message.messageId === data.messageId) {
-              return {...message, content: message.content + data.data};
+            setMessageAppeared(true);
+          }
+          if (data.type === 'reasoning') {
+            setMessages((prevMessages) =>
+              prevMessages.map((msg) => {
+                if (msg.messageId === data.messageId) {
+                  return { ...msg, reasoning: (msg.reasoning || '') + data.data };
+                }
+                return msg;
+              }),
+            );
+            return;
+          }
+          if (data.type === 'message') {
+            if (!added) {
+              setMessages((prevMessages) => [
+                ...prevMessages,
+                {
+                  content: data.data,
+                  messageId: data.messageId,
+                  chatId: chatId!,
+                  role: 'assistant',
+                  sources: sources,
+                  createdAt: new Date(),
+                },
+              ]);
+              added = true;
+            } else {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.messageId === data.messageId) {
+                    return { ...msg, content: msg.content + data.data };
+                  }
+                  return msg;
+                }),
+              );
             }
-
-            return message;
-          }),
-        );
-
-        recievedMessage += data.data;
-        setMessageAppeared(true);
-      }
-
-      if (data.type === 'messageEnd') {
-        setChatHistory((prevHistory) => [
-          ...prevHistory,
-          ['human', message],
-          ['assistant', recievedMessage],
-        ]);
-
-        ws?.removeEventListener('message', messageHandler);
-        setLoading(false);
-
-        const lastMsg = messagesRef.current[messagesRef.current.length - 1];
-
-        if (
-          lastMsg.role === 'assistant' &&
-          lastMsg.sources &&
-          lastMsg.sources.length > 0 &&
-          !lastMsg.suggestions
-        ) {
-          const suggestions = await getSuggestions(messagesRef.current);
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.messageId === lastMsg.messageId) {
-                return {...msg, suggestions: suggestions};
-              }
-              return msg;
-            }),
-          );
-        }
-      }
-    };
-
-    ws?.addEventListener('message', messageHandler);
+            receivedMessage += data.data;
+            setMessageAppeared(true);
+          }
+          if (data.type === 'messageEnd') {
+            setChatHistory((prevHistory) => [
+              ...prevHistory,
+              ['human', message],
+              ['assistant', receivedMessage],
+            ]);
+            setLoading(false);
+            const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+            if (
+              lastMsg &&
+              lastMsg.role === 'assistant' &&
+              lastMsg.sources &&
+              lastMsg.sources.length > 0 &&
+              !lastMsg.suggestions
+            ) {
+              getSuggestions(messagesRef.current).then((suggestions) => {
+                setMessages((prev) =>
+                  prev.map((msg) => {
+                    if (msg.messageId === lastMsg.messageId) {
+                      return { ...msg, suggestions: suggestions };
+                    }
+                    return msg;
+                  }),
+                );
+              });
+            }
+          }
+        },
+      });
+    } catch (err: any) {
+      toast.error('Error sending message: ' + err.message);
+      setLoading(false);
+    }
   };
 
   const rewrite = (messageId: string) => {
     const index = messages.findIndex((msg) => msg.messageId === messageId);
-
     if (index === -1) return;
-
     const message = messages[index - 1];
-
-    setMessages((prev) => {
-      return [...prev.slice(0, messages.length > 2 ? index - 1 : 0)];
-    });
-    setChatHistory((prev) => {
-      return [...prev.slice(0, messages.length > 2 ? index - 1 : 0)];
-    });
-
+    setMessages((prev) => prev.slice(0, messages.length > 2 ? index - 1 : 0));
+    setChatHistory((prev) => prev.slice(0, messages.length > 2 ? index - 1 : 0));
     sendMessage(message.content, message.messageId);
   };
 
+  // 如果有初始消息，则在就绪后发送
   useEffect(() => {
-    if (isReady && initialMessage && ws?.readyState === 1) {
+    if (isReady && initialMessage) {
       sendMessage(initialMessage);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws?.readyState, isReady, initialMessage, isWSReady]);
+  }, [isReady, initialMessage]);
 
   if (hasError) {
     return (
       <div className="relative">
         <div className="absolute w-full flex flex-row items-center justify-end mr-5 mt-5">
-          <Settings
-            className="cursor-pointer lg:hidden"
-            onClick={() => setIsSettingsOpen(true)}
-          />
+          <Settings className="cursor-pointer lg:hidden" onClick={() => setIsSettingsOpen(true)} />
         </div>
         <div className="flex flex-col items-center justify-center min-h-screen">
           <p className="dark:text-white/70 text-black/70 text-sm">
             Failed to connect to the server. Please try again later.
           </p>
         </div>
-        <SettingsDialog isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen}/>
+        <SettingsDialog isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
       </div>
     );
   }
 
   return isReady ? (
     notFound ? (
-      <NextError statusCode={404}/>
+      <NextError statusCode={404} />
     ) : (
       <div>
         {messages.length > 0 ? (
           <>
-            <Navbar chatId={chatId!} messages={messages}/>
+            <Navbar chatId={chatId!} messages={messages} />
             <Chat
               loading={loading}
               messages={messages}

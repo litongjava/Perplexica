@@ -48,7 +48,7 @@ export async function sendSSERequest(options: {
   const { accessToken, payload, onEvent } = options;
 
   // 使用 /api/chat/sse 接口（根据后端配置可调整）
-  const url = `${BASE_URL}/api/chat/sse`;
+  const url = `${BASE_URL}/chat/sse`;
 
   const response = await fetch(url, {
     method: "POST",
