@@ -18,6 +18,7 @@ export type Message = {
   messageId: string;
   chatId: string;
   createdAt: Date;
+  reasoning?:string;
   content: string;
   role: 'user' | 'assistant';
   suggestions?: string[];
@@ -298,6 +299,18 @@ const ChatWindow = ({id}: { id?: string }) => {
           added = true;
         }
         setMessageAppeared(true);
+      }
+
+      if (data.type === 'reasoning') {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => {
+            if (msg.messageId === data.messageId) {
+              return { ...msg, reasoning: (msg.reasoning || '') + data.data };
+            }
+            return msg;
+          }),
+        );
+        return;
       }
 
       if (data.type === 'message') {
