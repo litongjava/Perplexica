@@ -1,8 +1,3 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
-if (!BASE_URL) {
-  throw new Error("Missing backend URL in environment variables");
-}
-
 // 定义 SSE 事件数据结构
 export interface SSEEvent {
   type: string;
@@ -48,7 +43,7 @@ export async function sendSSERequest(options: {
   const { accessToken, payload, onEvent } = options;
 
   // 使用 /api/chat/sse 接口（根据后端配置可调整）
-  const url = `${BASE_URL}/chat/sse`;
+  const url = `${process.env.NEXT_PUBLIC_API_URL}/chat/sse`;
 
   const response = await fetch(url, {
     method: "POST",
