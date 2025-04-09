@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Document } from '@langchain/core/documents';
+import {useEffect, useRef, useState} from 'react';
+import {Document} from '@langchain/core/documents';
 import Navbar from './Navbar';
 import Chat from './Chat';
 import EmptyChat from './EmptyChat';
-import { toast } from 'sonner';
-import { useSearchParams } from 'next/navigation';
-import { getSuggestions } from '@/lib/actions';
-import { Settings } from 'lucide-react';
+import {toast} from 'sonner';
+import {useSearchParams} from 'next/navigation';
+import {getSuggestions} from '@/lib/actions';
+import {Settings} from 'lucide-react';
 import SettingsDialog from './SettingsDialog';
 import NextError from 'next/error';
-import { Mcid } from '@/lib/mcid';
+import {Mcid} from '@/lib/mcid';
 import {sendSSERequest, SSEEvent} from "@/utils/sseClient";
+
 export type Message = {
   messageId: string;
   chatId: string;
@@ -54,7 +55,7 @@ const loadMessages = async (
   }
 
   const data = await res.json();
-  const messages = data.messages.map((msg: any) => ({ ...msg })) as Message[];
+  const messages = data.messages.map((msg: any) => ({...msg})) as Message[];
   setMessages(messages);
 
   const history = messages.map((msg) => [msg.role, msg.content]) as [string, string][];
@@ -77,7 +78,7 @@ const loadMessages = async (
   setIsMessagesLoaded(true);
 };
 
-const ChatWindow = ({ id }: { id?: string }) => {
+const ChatWindow = ({id}: { id?: string }) => {
   const searchParams = useSearchParams();
   const initialMessage = searchParams.get('q');
   const [userId, setUserId] = useState<string | undefined>();
@@ -237,28 +238,21 @@ const ChatWindow = ({ id }: { id?: string }) => {
             return;
           }
           if (data.type === 'sources') {
-            sources = data.data;
-            if (!added) {
-              setMessages((prevMessages) => [
-                ...prevMessages,
-                {
-                  content: '',
-                  messageId: data.messageId,
-                  chatId: chatId!,
-                  role: 'assistant',
-                  sources: sources,
-                  createdAt: new Date(),
-                },
-              ]);
-              added = true;
-            }
+            setMessages((prevMessages) =>
+              prevMessages.map((msg) => {
+                if (msg.messageId === data.messageId) {
+                  return {...msg, sources: data.data};
+                }
+                return msg;
+              })
+            );
             setMessageAppeared(true);
           }
           if (data.type === 'reasoning') {
             setMessages((prevMessages) =>
               prevMessages.map((msg) => {
                 if (msg.messageId === data.messageId) {
-                  return { ...msg, reasoning: (msg.reasoning || '') + data.data };
+                  return {...msg, reasoning: (msg.reasoning || '') + data.data};
                 }
                 return msg;
               }),
@@ -283,7 +277,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
               setMessages((prev) =>
                 prev.map((msg) => {
                   if (msg.messageId === data.messageId) {
-                    return { ...msg, content: msg.content + data.data };
+                    return {...msg, content: msg.content + data.data};
                   }
                   return msg;
                 }),
@@ -311,7 +305,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
                 setMessages((prev) =>
                   prev.map((msg) => {
                     if (msg.messageId === lastMsg.messageId) {
-                      return { ...msg, suggestions: suggestions };
+                      return {...msg, suggestions: suggestions};
                     }
                     return msg;
                   }),
@@ -347,26 +341,26 @@ const ChatWindow = ({ id }: { id?: string }) => {
     return (
       <div className="relative">
         <div className="absolute w-full flex flex-row items-center justify-end mr-5 mt-5">
-          <Settings className="cursor-pointer lg:hidden" onClick={() => setIsSettingsOpen(true)} />
+          <Settings className="cursor-pointer lg:hidden" onClick={() => setIsSettingsOpen(true)}/>
         </div>
         <div className="flex flex-col items-center justify-center min-h-screen">
           <p className="dark:text-white/70 text-black/70 text-sm">
             Failed to connect to the server. Please try again later.
           </p>
         </div>
-        <SettingsDialog isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
+        <SettingsDialog isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen}/>
       </div>
     );
   }
 
   return isReady ? (
     notFound ? (
-      <NextError statusCode={404} />
+      <NextError statusCode={404}/>
     ) : (
       <div>
         {messages.length > 0 ? (
           <>
-            <Navbar chatId={chatId!} messages={messages} />
+            <Navbar chatId={chatId!} messages={messages}/>
             <Chat
               loading={loading}
               messages={messages}
