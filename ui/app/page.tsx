@@ -3,8 +3,8 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 
 export const metadata: Metadata = {
-  title: 'Max Search - Searching Thinking with Gemini',
-  description: 'Chat with the internet, chat with MyCounsellor.',
+  title: 'Max Search - Ai Serach Engine',
+  description: 'Chat with the internet.',
 };
 
 const Home = () => {

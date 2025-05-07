@@ -117,7 +117,7 @@ const MessageBox = ({
                     </h3>
                   </div>
                   <details open className="bg-gray-100 dark:bg-gray-800 p-2 rounded mt-4">
-                    <summary className="cursor-pointer font-medium">Reasoning Process (Click to Expand/Collapse)</summary>
+                    <summary className="cursor-pointer font-medium">Thought</summary>
                     <div className="mt-2">
                       <Markdown className="prose dark:prose-invert">
                         {message.reasoning}
