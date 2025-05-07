@@ -211,9 +211,96 @@ const ChatWindow = ({id}: { id?: string }) => {
       },
     ]);
 
+
+    let onEvent = (event: SSEEvent) => {
+      if (event.type === 'done' || !event.data) return;
+
+      const data = JSON.parse(event.data);
+      if (data.type === 'error') {
+        toast.error(data.data);
+        setLoading(false);
+        return;
+      }
+      if (data.type === 'sources') {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => {
+            if (msg.messageId === data.messageId) {
+              return {...msg, sources: data.data};
+            }
+            return msg;
+          })
+        );
+        setMessageAppeared(true);
+      }
+      if (data.type === 'reasoning') {
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) => {
+            if (msg.messageId === data.messageId) {
+              return {...msg, reasoning: (msg.reasoning || '') + data.data};
+            }
+            return msg;
+          }),
+        );
+        return;
+      }
+      if (data.type === 'message') {
+        if (!added) {
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            {
+              content: data.data,
+              messageId: data.messageId,
+              chatId: chatId!,
+              role: 'assistant',
+              sources: sources,
+              createdAt: new Date(),
+            },
+          ]);
+          added = true;
+        } else {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.messageId === data.messageId) {
+                return {...msg, content: msg.content + data.data};
+              }
+              return msg;
+            }),
+          );
+        }
+        receivedMessage += data.data;
+        setMessageAppeared(true);
+      }
+      if (data.type === 'messageEnd') {
+        setChatHistory((prevHistory) => [
+          ...prevHistory,
+          ['human', message],
+          ['assistant', receivedMessage],
+        ]);
+        setLoading(false);
+        const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+        if (
+          lastMsg &&
+          lastMsg.role === 'assistant' &&
+          lastMsg.sources &&
+          lastMsg.sources.length > 0 &&
+          !lastMsg.suggestions
+        ) {
+          getSuggestions(messagesRef.current).then((suggestions) => {
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.messageId === lastMsg.messageId) {
+                  return {...msg, suggestions: suggestions};
+                }
+                return msg;
+              }),
+            );
+          });
+        }
+      }
+    };
     try {
       await sendSSERequest({
-        accessToken: null, // 如有需要，可加入 token
+        accessToken: null,
         payload: {
           type: 'message',
           userId: userId!,
@@ -228,95 +315,11 @@ const ChatWindow = ({id}: { id?: string }) => {
           optimizationMode: optimizationMode,
           history: [],
         },
-        onEvent: (event: SSEEvent) => {
-          if (event.type === 'done' || !event.data) return;
-
-          const data = JSON.parse(event.data);
-          if (data.type === 'error') {
-            toast.error(data.data);
-            setLoading(false);
-            return;
-          }
-          if (data.type === 'sources') {
-            setMessages((prevMessages) =>
-              prevMessages.map((msg) => {
-                if (msg.messageId === data.messageId) {
-                  return {...msg, sources: data.data};
-                }
-                return msg;
-              })
-            );
-            setMessageAppeared(true);
-          }
-          if (data.type === 'reasoning') {
-            setMessages((prevMessages) =>
-              prevMessages.map((msg) => {
-                if (msg.messageId === data.messageId) {
-                  return {...msg, reasoning: (msg.reasoning || '') + data.data};
-                }
-                return msg;
-              }),
-            );
-            return;
-          }
-          if (data.type === 'message') {
-            if (!added) {
-              setMessages((prevMessages) => [
-                ...prevMessages,
-                {
-                  content: data.data,
-                  messageId: data.messageId,
-                  chatId: chatId!,
-                  role: 'assistant',
-                  sources: sources,
-                  createdAt: new Date(),
-                },
-              ]);
-              added = true;
-            } else {
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.messageId === data.messageId) {
-                    return {...msg, content: msg.content + data.data};
-                  }
-                  return msg;
-                }),
-              );
-            }
-            receivedMessage += data.data;
-            setMessageAppeared(true);
-          }
-          if (data.type === 'messageEnd') {
-            setChatHistory((prevHistory) => [
-              ...prevHistory,
-              ['human', message],
-              ['assistant', receivedMessage],
-            ]);
-            setLoading(false);
-            const lastMsg = messagesRef.current[messagesRef.current.length - 1];
-            if (
-              lastMsg &&
-              lastMsg.role === 'assistant' &&
-              lastMsg.sources &&
-              lastMsg.sources.length > 0 &&
-              !lastMsg.suggestions
-            ) {
-              getSuggestions(messagesRef.current).then((suggestions) => {
-                setMessages((prev) =>
-                  prev.map((msg) => {
-                    if (msg.messageId === lastMsg.messageId) {
-                      return {...msg, suggestions: suggestions};
-                    }
-                    return msg;
-                  }),
-                );
-              });
-            }
-          }
-        },
+        onEvent: onEvent,
       });
     } catch (err: any) {
-      toast.error('Error sending message: ' + err.message);
+      //toast.error('Error sending message: ' + err.message);
+      console.error('Error sending message: ' + err.message);
       setLoading(false);
     }
   };
