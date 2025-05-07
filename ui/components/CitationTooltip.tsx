@@ -21,6 +21,8 @@ const CitationTooltip = ({
                            onMouseEnter,
                            onMouseLeave,
                          }: CitationTooltipProps) => {
+  const [copied, setCopied] = useState(false); // State to show copy success
+
   if (!visible) return null;
 
   const MAX_CONTENT_LENGTH = 300;
@@ -29,7 +31,7 @@ const CitationTooltip = ({
       ? content.substring(0, MAX_CONTENT_LENGTH) + '...'
       : content;
 
-  const [copied, setCopied] = useState(false); // State to show copy success
+
 
   const handleCopy = async () => {
     try {
