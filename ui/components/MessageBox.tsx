@@ -1,17 +1,18 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element */
-import React, { MutableRefObject, useEffect, useState } from 'react';
-import { Message } from './ChatWindow';
-import { cn } from '@/lib/utils';
-import { BookCopy, Disc3, Layers3, Plus, StopCircle, Volume2 } from 'lucide-react';
+import React, {MutableRefObject, useEffect, useState, useRef} from 'react';
+import {BookCopy, Disc3, Layers3, Plus, StopCircle, Volume2} from 'lucide-react';
+import {Message} from './ChatWindow';
+import {cn} from '@/lib/utils';
 import Markdown from 'markdown-to-jsx';
 import Copy from './MessageActions/Copy';
 import Rewrite from './MessageActions/Rewrite';
 import MessageSources from './MessageSources';
 import SearchImages from './SearchImages';
 import SearchVideos from './SearchVideos';
-import { useSpeech } from 'react-text-to-speech';
+import {useSpeech} from 'react-text-to-speech';
+import CitationTooltip from './CitationTooltip';
 
 const MessageBox = ({
                       message,
@@ -35,6 +36,18 @@ const MessageBox = ({
   const [parsedMessage, setParsedMessage] = useState(message.content);
   const [speechMessage, setSpeechMessage] = useState(message.content);
 
+  const [tooltipData, setTooltipData] = useState<{
+    content: string;
+    title?: string;
+    url?: string;
+    visible: boolean;
+    position: { top: number; left: number };
+  } | null>(null);
+
+  const messageContentRef = useRef<HTMLDivElement>(null);
+  const hideTooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isMouseOverTooltipRef = useRef(false);
+
   useEffect(() => {
     const regex = /\[(\d+)\]/g;
 
@@ -43,20 +56,129 @@ const MessageBox = ({
       message?.sources &&
       message.sources.length > 0
     ) {
-      return setParsedMessage(
-        message.content.replace(
-          regex,
-          (_, number) =>
-            `<a href="${message.sources?.[number - 1]?.metadata?.url}" target="_blank" className="bg-light-secondary dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative">${number}</a>`
-        )
+      const newParsedMessage = message.content.replace(
+        regex,
+        (_, numberStr) => {
+          const number = parseInt(numberStr, 10);
+          const source = message.sources?.[number - 1];
+          if (source) {
+            return `<a href="${source.metadata?.url || '#'}" target="_blank" class="citation-link bg-light-secondary dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative" data-source-index="${number - 1}">${number}</a>`;
+          }
+          return `[${number}]`;
+        }
       );
+      setParsedMessage(newParsedMessage);
+      setSpeechMessage(message.content.replace(regex, ''));
+      return;
     }
 
     setSpeechMessage(message.content.replace(regex, ''));
     setParsedMessage(message.content);
   }, [message.content, message.sources, message.role]);
 
-  const { speechStatus, start, stop } = useSpeech({ text: speechMessage });
+  const {speechStatus, start, stop} = useSpeech({text: speechMessage});
+
+  useEffect(() => {
+    const contentElement = messageContentRef.current;
+    if (!contentElement || message.role !== 'assistant' || !message.sources || message.sources.length === 0) {
+      if (tooltipData?.visible) {
+        setTooltipData(null);
+      }
+      return;
+    }
+
+    const showTooltip = (target: HTMLElement) => {
+      if (target.classList.contains('citation-link') && target.dataset.sourceIndex) {
+        if (hideTooltipTimeoutRef.current) {
+          clearTimeout(hideTooltipTimeoutRef.current);
+          hideTooltipTimeoutRef.current = null;
+        }
+
+        const sourceIndex = parseInt(target.dataset.sourceIndex, 10);
+        const source = message.sources?.[sourceIndex];
+
+        if (source) {
+          const rect = target.getBoundingClientRect();
+          const scrollContainer = target.closest('.scroll-container') || document.documentElement;
+          const scrollTop = scrollContainer.scrollTop;
+          const scrollLeft = scrollContainer.scrollLeft;
+
+          setTooltipData({
+            content: source.pageContent,
+            title: source.metadata?.title,
+            url: source.metadata?.url,
+            visible: true,
+            position: {
+              top: rect.top + scrollTop,
+              left: rect.left + scrollLeft + rect.width / 2,
+            },
+          });
+        }
+      }
+    };
+
+    const internalHideTooltip = () => {
+      if (!isMouseOverTooltipRef.current) {
+        setTooltipData(null);
+      }
+    };
+
+    const scheduleHideTooltip = () => {
+      if (hideTooltipTimeoutRef.current) {
+        clearTimeout(hideTooltipTimeoutRef.current);
+      }
+      hideTooltipTimeoutRef.current = setTimeout(() => {
+        internalHideTooltip();
+      }, 200); // 延迟 200ms
+    };
+
+    const handleCitationLinkMouseEnter = (event: MouseEvent) => {
+      // 确保 event.target 是 HTMLElement
+      if (event.target instanceof HTMLElement) {
+        showTooltip(event.target);
+      }
+    };
+
+    const handleCitationLinkMouseLeave = () => {
+      isMouseOverTooltipRef.current = false;
+      scheduleHideTooltip();
+    };
+
+    contentElement.addEventListener('mouseover', handleCitationLinkMouseEnter);
+    contentElement.addEventListener('mouseout', handleCitationLinkMouseLeave);
+
+    return () => {
+      contentElement.removeEventListener('mouseover', handleCitationLinkMouseEnter);
+      contentElement.removeEventListener('mouseout', handleCitationLinkMouseLeave);
+      if (hideTooltipTimeoutRef.current) {
+        clearTimeout(hideTooltipTimeoutRef.current);
+      }
+      setTooltipData(null);
+    };
+  }, [parsedMessage, message.sources, message.role]);
+
+
+  const handleTooltipMouseEnter = () => {
+    isMouseOverTooltipRef.current = true;
+    if (hideTooltipTimeoutRef.current) {
+      clearTimeout(hideTooltipTimeoutRef.current);
+      hideTooltipTimeoutRef.current = null;
+    }
+  };
+
+  const handleTooltipMouseLeave = () => {
+    isMouseOverTooltipRef.current = false;
+    if (hideTooltipTimeoutRef.current) {
+      clearTimeout(hideTooltipTimeoutRef.current);
+    }
+    // 当鼠标离开 tooltip 时，也启动一个延迟隐藏
+    hideTooltipTimeoutRef.current = setTimeout(() => {
+      if (!isMouseOverTooltipRef.current) { // 再次检查
+        setTooltipData(null);
+      }
+    }, 50); // 较短的延迟
+  };
+
 
   return (
     <div>
@@ -66,9 +188,10 @@ const MessageBox = ({
             {message.content}
           </h2>
           <div
-            ref={dividerRef}
+            ref={messageIndex === 0 ? dividerRef : undefined}
             className="flex flex-col space-y-6 w-full lg:w-9/12"
           >
+            {/* User sources removed as per previous discussion */}
           </div>
         </div>
       )}
@@ -82,12 +205,12 @@ const MessageBox = ({
             {message.sources && message.sources.length > 0 && (
               <div className="flex flex-col space-y-2">
                 <div className="flex flex-row items-center space-x-2">
-                  <BookCopy className="text-black dark:text-white" size={20} />
+                  <BookCopy className="text-black dark:text-white" size={20}/>
                   <h3 className="text-black dark:text-white font-medium text-xl">
                     Sources
                   </h3>
                 </div>
-                <MessageSources sources={message.sources} />
+                <MessageSources sources={message.sources}/>
               </div>
             )}
             <div className="flex flex-col space-y-2">
@@ -106,7 +229,7 @@ const MessageBox = ({
                     </h3>
                   </div>
                   <details open className="bg-gray-100 dark:bg-gray-800 p-2 rounded mt-4">
-                    <summary className="cursor-pointer font-medium">Thought</summary>
+                    <summary className="cursor-pointer font-medium">Thinking</summary>
                     <div className="mt-2">
                       <Markdown className="prose dark:prose-invert">
                         {message.reasoning}
@@ -128,14 +251,16 @@ const MessageBox = ({
                   Answer
                 </h3>
               </div>
-              <Markdown
-                className={cn(
-                  'prose prose-h1:mb-3 prose-h2:mb-2 prose-h2:mt-6 prose-h2:font-[800] prose-h3:mt-4 prose-h3:mb-1.5 prose-h3:font-[600] dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 font-[400]',
-                  'max-w-none break-words text-black dark:text-white'
-                )}
-              >
-                {parsedMessage}
-              </Markdown>
+              <div ref={messageContentRef}>
+                <Markdown
+                  className={cn(
+                    'prose prose-h1:mb-3 prose-h2:mb-2 prose-h2:mt-6 prose-h2:font-[800] prose-h3:mt-4 prose-h3:mb-1.5 prose-h3:font-[600] dark:prose-invert prose-p:leading-relaxed prose-pre:p-0 font-[400]',
+                    'max-w-none break-words text-black dark:text-white'
+                  )}
+                >
+                  {parsedMessage}
+                </Markdown>
+              </div>
 
 
               {loading && isLast ? null : (
@@ -210,15 +335,27 @@ const MessageBox = ({
             className="lg:sticky lg:top-20 flex flex-col items-center space-y-3 w-full lg:w-3/12 z-30 h-full pb-4"
           >
             <SearchImages
-              query={history[messageIndex - 1].content}
-              chatHistory={history.slice(0, messageIndex - 1)}
+              query={history[messageIndex - 1]?.content}
+              chatHistory={history.slice(0, messageIndex > 0 ? messageIndex - 1 : 0)}
             />
             <SearchVideos
-              chatHistory={history.slice(0, messageIndex - 1)}
-              query={history[messageIndex - 1].content}
+              chatHistory={history.slice(0, messageIndex > 0 ? messageIndex - 1 : 0)}
+              query={history[messageIndex - 1]?.content}
             />
           </div>
         </div>
+      )}
+
+      {tooltipData && tooltipData.visible && (
+        <CitationTooltip
+          content={tooltipData.content}
+          title={tooltipData.title}
+          url={tooltipData.url}
+          visible={tooltipData.visible}
+          position={tooltipData.position}
+          onMouseEnter={handleTooltipMouseEnter}
+          onMouseLeave={handleTooltipMouseLeave}
+        />
       )}
     </div>
   );
