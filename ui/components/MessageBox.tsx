@@ -69,17 +69,6 @@ const MessageBox = ({
             ref={dividerRef}
             className="flex flex-col space-y-6 w-full lg:w-9/12"
           >
-            {message.sources && message.sources.length > 0 && (
-              <div className="flex flex-col space-y-2">
-                <div className="flex flex-row items-center space-x-2">
-                  <BookCopy className="text-black dark:text-white" size={20} />
-                  <h3 className="text-black dark:text-white font-medium text-xl">
-                    Sources
-                  </h3>
-                </div>
-                <MessageSources sources={message.sources} />
-              </div>
-            )}
           </div>
         </div>
       )}
